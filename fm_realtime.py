@@ -2,31 +2,51 @@ from rtlsdr import RtlSdr
 import numpy as np
 import scipy.signal as signal
 import struct
-import sys
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-import subprocess
+import pyaudio
+import sys
 
-sdr = RtlSdr()
 
-F_station = 81.3e6  # 81.3MHz J-Wave Tokyo Sky Tree
-F_offset = 25000
-Fs = 2.4e6  # Sample rate
-center_freq = F_station - F_offset
-N = 256000 # 256*1024 # Samples to capture
+def visualize_signals(x2, x4, x5, Fs_y):
+    # Generate plot of shifted signal
+    ax1.specgram(x2, NFFT=2048, Fs=Fs)  
+    ax1.set_title("Shifted signal (x2)")  
+    ax1.set_xlabel("Time (s)")  
+    ax1.set_ylabel("Frequency (Hz)")  
+    ax1.set_ylim(-Fs/2, Fs/2)  
+    ax1.set_xlim(0,len(x2)/Fs)  
 
-# Configure device
-sdr.sample_rate = Fs
-sdr.center_freq = center_freq
-sdr.gain = 'auto'
+    ax2.specgram(x4, NFFT=2048, Fs=Fs_y)  
+    ax2.set_title("x4")  
+    ax2.set_ylim(-Fs_y/2, Fs_y/2)  
+    ax2.set_xlim(0,len(x4)/Fs_y)  
 
-# setup graph
-fig, axs = plt.subplots(2,2)
-(ax1, ax2), (ax3, ax4) = axs
+    # Plot the constellation of x4.  
+    ax3.scatter(np.real(x4[0:50000]), np.imag(x4[0:50000]), color="red", alpha=0.05)  
+    ax3.set_title("Constellation (x4)")  
+    ax3.set_xlabel("Real")  
+    ax3.set_xlim(-1.1,1.1)  
+    ax3.set_ylabel("Imaginary")  
+    ax3.set_ylim(-1.1,1.1)  
 
-command = "sox -t raw -r 256000 -b 16 -c 1 -L -e signed-integer - -d rate 32000"
+    # Plot the PSD of x5
+    ax4.psd(x5, NFFT=2048, Fs=Fs_y, color="blue")  
+    ax4.set_title("Power Spectral Density (x5)")  
+    ax4.axvspan(0,             15000,         color="red", alpha=0.2)  
+    ax4.axvspan(19000-500,     19000+500,     color="green", alpha=0.4)  
+    ax4.axvspan(19000*2-15000, 19000*2+15000, color="orange", alpha=0.2)  
+    ax4.axvspan(19000*3-1500,  19000*3+1500,  color="blue", alpha=0.2)  
+    ax4.ticklabel_format(style='plain', axis='y' )  
 
-def fm_sample(i):
+    # Update graph to show real time data 
+    plt.pause(0.0000001)
+
+    # clear graphs to avoid overlapping 
+    ax3.clear() # clear constellation graph
+    plt.cla()   # clear the rest of graphs
+
+
+def stream_fm():
     # Get around 0.1s of data
     samples = sdr.read_samples(N)
 
@@ -38,15 +58,6 @@ def fm_sample(i):
     fc1 = np.exp(-1.0j*2.0*np.pi* F_offset/Fs*np.arange(len(x1)))  
     # Multiply x1 and the digital complex expontential (baseband)
     x2 = x1 * fc1
-
-    ## Generate plot of shifted signal
-    ax1.specgram(x2, NFFT=2048, Fs=Fs)  
-    ax1.set_title("Shifted signal (x2)")  
-    ax1.set_xlabel("Time (s)")  
-    ax1.set_ylabel("Frequency (Hz)")  
-    ax1.set_ylim(-Fs/2, Fs/2)  
-    ax1.set_xlim(0,len(x2)/Fs)  
-    # ax1.set_ticklabel_format(style='plain', axis='y' )  
 
     ## Filter and downsample the signal
     # An FM broadcast signal has  a bandwidth of 200 kHz
@@ -61,33 +72,10 @@ def fm_sample(i):
     # Calculate the new sampling rate
     Fs_y = Fs/dec_rate  
 
-    ax2.specgram(x4, NFFT=2048, Fs=Fs_y)  
-    ax2.set_title("x4")  
-    ax2.set_ylim(-Fs_y/2, Fs_y/2)  
-    ax2.set_xlim(0,len(x4)/Fs_y)  
-    # ax2.ticklabel_format(style='plain', axis='y' ) 
-
-    ## Plot the constellation of x4.  
-    ax3.scatter(np.real(x4[0:50000]), np.imag(x4[0:50000]), color="red", alpha=0.05)  
-    ax3.set_title("Constellation (x4)")  
-    ax3.set_xlabel("Real")  
-    ax3.set_xlim(-1.1,1.1)  
-    ax3.set_ylabel("Imaginary")  
-    ax3.set_ylim(-1.1,1.1)  
-
     ## Demodulate signal
     ### Polar discriminator
     y5 = x4[1:] * np.conj(x4[:-1])  
     x5 = np.angle(y5)
-
-    # Plot the PSD of x5
-    ax4.psd(x5, NFFT=2048, Fs=Fs_y, color="blue")  
-    ax4.set_title("Power Spectral Density (x5)")  
-    ax4.axvspan(0,             15000,         color="red", alpha=0.2)  
-    ax4.axvspan(19000-500,     19000+500,     color="green", alpha=0.4)  
-    ax4.axvspan(19000*2-15000, 19000*2+15000, color="orange", alpha=0.2)  
-    ax4.axvspan(19000*3-1500,  19000*3+1500,  color="blue", alpha=0.2)  
-    # ax4.ticklabel_format(style='plain', axis='y' )  
 
     # De-emphasis filter
     # Given a signal 'x5' (in a numpy array) with sampling rate Fs_y
@@ -104,31 +92,64 @@ def fm_sample(i):
 
     x7 = signal.decimate(x6, dec_audio)  
 
-    ## Write to an audio file
     # Scale audio to adjust volume
     x7 *= 10000 / np.max(np.abs(x7))
-    # x7.astype("int16").tofile("wbfm-mono.raw")  
 
-    
-    # Update graph to show real time data 
-    # plt.pause(1)
-
-    # clear graphs to avoid overlapping 
-    # plt.cla()
-
-    output_raw = x7.astype(int)
-
-    # # Output as raw 16-bit, 1 channel audio
+    # Output as raw 16-bit, 1 channel audio
+    output_raw = x7.astype("int16")
     bits = struct.pack(('<%dh' % len(output_raw)), *output_raw)
-    # bits = struct.pack(('<%dh' % len(x7)), *x7)
+    # print(len(output_raw), Fs_audio)
+    stream.write(bits)
 
-    # sys.stdout.buffer.write(bits)
-
-    # subprocess.call(command, shell=True)
+    return x2, x4, x5, Fs_y
 
 
-ani = FuncAnimation(fig, fm_sample,
-                    interval=1000, repeat=False)
+if __name__ == "__main__":    
+    if len(sys.argv) > 2 or len(sys.argv) == 1:
+        print("Usage: fm_realtime.py <station number in MHz>")
+        exit(1)
+    else:
+        try:
+            float(sys.argv[1])
+        except ValueError:
+            print("Usage: fm_realtime.py <station number in MHz>")
+            exit(1)
 
-plt.show()
-sdr.close()
+    sdr = RtlSdr()
+
+    F_station = float(sys.argv[1]) * 1e6  # 81.3MHz J-Wave Tokyo Sky Tree
+    F_offset = 25000
+    Fs = 2.4e6  # Sample rate
+    center_freq = F_station - F_offset
+    N = 256*1024 # 256000 # Samples to capture
+
+    # Configure device
+    sdr.sample_rate = Fs
+    sdr.center_freq = center_freq
+    sdr.gain = 'auto'
+
+    # setup graph
+    fig, axs = plt.subplots(2,2, figsize=(12, 9))
+    (ax1, ax2), (ax3, ax4) = axs
+
+    # Setup PyAudio
+    BITRATE = 44100 # 44100 # Number of frames per second/frameset
+    BUFFER_SIZE = 5462 # 5462 1024
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=1,
+                    rate=BITRATE,
+                    frames_per_buffer=BUFFER_SIZE,
+                    output=True)
+
+    try:        
+        while True:
+            x2, x4, x5, Fs_y = stream_fm()
+            # visualize_signals(x2, x4, x5, Fs_y)
+    except KeyboardInterrupt:
+        stream.stop_stream()
+        stream.close()
+        
+        p.terminate()
+
+        sdr.close()
