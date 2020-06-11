@@ -2,3 +2,4 @@
 *.raw
 *.mp3
 *.png
+Pipfile.lock
