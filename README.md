@@ -1,6 +1,14 @@
 # RTL-SDR_Python
 Python implementation for RTL-SDR FM application
 
+### Install RTL-SDR Driver
+* #### Windows
+
+* #### macOS
+```
+brew install librtlsdr
+```
+
 ### Setup Python environment
 #### Python Installation
 * #### Windows
@@ -26,7 +34,7 @@ pipenv shell
 ### Usage: 
 ```
 fm_sample.py
-fm_realtime.py <station number in MHz>
+fm_stream.py <station number in MHz>
 ```
 
 ### Developing Python in VSCode Guide
