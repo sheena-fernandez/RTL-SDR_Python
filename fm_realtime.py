@@ -102,6 +102,7 @@ def stream_fm():
     bits = struct.pack(('<%dh' % len(output_raw)), *output_raw)
     # print(len(output_raw), Fs_audio)
     # stream.write(bits)
+    visualize_signals(x2, x4, x5, Fs_y)
 
     return x2, x4, x5, Fs_y
 
@@ -149,7 +150,8 @@ if __name__ == "__main__":
             x2, x4, x5, Fs_y = stream_fm()
 
             # TODO: Graph generation processing time too slow to run together with streaming
-            visualize_signals(x2, x4, x5, Fs_y)
+            # visualize_signals(x2, x4, x5, Fs_y)
+
     except KeyboardInterrupt:
         stream.stop_stream()
         stream.close()

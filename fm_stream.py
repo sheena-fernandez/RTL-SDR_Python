@@ -5,6 +5,7 @@ import scipy.signal as signal
 import struct
 import pyaudio
 import sys
+import matplotlib.pyplot as plt
 
 
 sdr = RtlSdr()
@@ -18,6 +19,46 @@ stream = p.open(format=pyaudio.paInt16,
                 rate=BITRATE,
                 frames_per_buffer=BUFFER_SIZE,
                 output=True)
+
+
+def visualize_signals(x2, x4, x5, Fs_y):
+    # Generate plot of shifted signal
+    ax1.specgram(x2, NFFT=2048, Fs=Fs)
+    ax1.set_title("Shifted signal (x2)")
+    ax1.set_xlabel("Time (s)")
+    ax1.set_ylabel("Frequency (Hz)")
+    ax1.set_ylim(-Fs/2, Fs/2)
+    ax1.set_xlim(0, len(x2)/Fs)
+
+    ax2.specgram(x4, NFFT=2048, Fs=Fs_y)
+    ax2.set_title("x4")
+    ax2.set_ylim(-Fs_y/2, Fs_y/2)
+    ax2.set_xlim(0, len(x4)/Fs_y)
+
+    # Plot the constellation of x4.
+    ax3.scatter(np.real(x4[0:50000]), np.imag(
+        x4[0:50000]), color="red", alpha=0.05)
+    ax3.set_title("Constellation (x4)")
+    ax3.set_xlabel("Real")
+    ax3.set_xlim(-1.1, 1.1)
+    ax3.set_ylabel("Imaginary")
+    ax3.set_ylim(-1.1, 1.1)
+
+    # Plot the PSD of x5
+    ax4.psd(x5, NFFT=2048, Fs=Fs_y, color="blue")
+    ax4.set_title("Power Spectral Density (x5)")
+    ax4.axvspan(0,             15000,         color="red", alpha=0.2)
+    ax4.axvspan(19000-500,     19000+500,     color="green", alpha=0.4)
+    ax4.axvspan(19000*2-15000, 19000*2+15000, color="orange", alpha=0.2)
+    ax4.axvspan(19000*3-1500,  19000*3+1500,  color="blue", alpha=0.2)
+    ax4.ticklabel_format(style='plain', axis='y')
+
+    # Update graph to show real time data
+    plt.pause(1)
+
+    # clear graphs to avoid overlapping
+    ax3.clear()  # clear constellation graph
+    plt.cla()   # clear the rest of graphs
 
 
 async def streaming():
@@ -50,6 +91,8 @@ async def streaming():
             # Polar discriminator
             y5 = x4[1:] * np.conj(x4[:-1])
             x5 = np.angle(y5)
+
+            # visualize_signals(x2, x4, x5, Fs_y)
 
             # De-emphasis filter
             # Given a signal 'x5' (in a numpy array) with sampling rate Fs_y
@@ -101,6 +144,10 @@ if __name__ == "__main__":
     Fs = 2.4e6  # Sample rate TODO
     center_freq = F_station - F_offset  # TODO
     N = 256*1024  # 256000 # Samples to capture
+
+    # setup graph
+    fig, axs = plt.subplots(2, 2, figsize=(12, 9))
+    (ax1, ax2), (ax3, ax4) = axs
 
     # Configure device
     sdr.sample_rate = Fs
